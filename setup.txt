@@ -1,3 +1,5 @@
+https://www.python.org/downloads/
+https://www.enterprisedb.com/downloads/postgres-postgresql-downloads
 
 EKART - PROJECT SETUP & INSTALLATION INSTRUCTIONS
 =================================================
@@ -239,3 +241,4 @@ If you still face issues, gather the following and share with the project mainta
 
 ---
 Thank you! This README_SETUP.txt is intended to be shared alongside the codebase so a new developer can get the project up and running quickly.
+
