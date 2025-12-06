@@ -1,0 +1,241 @@
+
+EKART - PROJECT SETUP & INSTALLATION INSTRUCTIONS
+=================================================
+
+This file contains step-by-step instructions to set up, run, and share the EKART FastAPI + SQLAlchemy project
+on a Windows machine (the steps are similar on Linux/macOS with small changes).
+
+---
+Project structure (expected)
+----------------------------
+project/
+│── main.py
+│── crud.py
+│── models.py
+│── schemas.py
+│── database.py
+│── requirements.txt
+│── .env (optional)
+│── setup.txt  <-- this file
+│── any other modules or routers/
+
+---
+1) Prerequisites
+----------------
+- Python 3.10+ installed (you appear to be using Python 3.13; that's OK)
+- PostgreSQL installed and running (or use SQLite as alternative)
+- (Optional) pgAdmin or psql for DB administration
+- Git (optional, for cloning/sharing repo)
+- A terminal / PowerShell
+
+---
+2) Create and activate a virtual environment (Windows PowerShell)
+----------------------------------------------------------------
+Open PowerShell inside project folder and run:
+
+python -m venv .venv
+# Activate venv
+.\.venv\Scripts\Activate.ps1       # PowerShell
+# Or for cmd:
+# .\.venv\Scripts\activate.bat
+
+Confirm python is the virtualenv one:
+python --version
+pip --version
+
+---
+3) Create requirements.txt (if not present)
+-------------------------------------------
+Create a `requirements.txt` file with these basic dependencies (example):
+
+fastapi
+uvicorn[standard]
+SQLAlchemy
+psycopg2-binary
+pydantic==2.3.0    # or the version you prefer
+python-dotenv      # optional if you use .env for secrets
+
+Save the file as `requirements.txt`.
+
+Install dependencies:
+pip install -r requirements.txt
+
+---
+4) Database configuration
+-------------------------
+We assume PostgreSQL. Update `database.py` with the correct connection URL format:
+
+postgresql://<DB_USER>:<DB_PASSWORD>@localhost:<DB_PORT>/<DB_NAME>
+
+Example (default postgres port):
+postgresql://postgres:yourpassword@localhost:5432/pythonProject5
+
+Important notes:
+- PostgreSQL default port = 5432. Do NOT use port 8000 (that's the app's HTTP port).
+- If you get "connection refused", ensure PostgreSQL service is running.
+- If you get "database does not exist", create the database (step below).
+
+Create the database (Windows) using psql or pgAdmin:
+# Using `psql` in terminal:
+psql -U postgres
+# then inside psql prompt:
+CREATE DATABASE pythonProject5;
+\q
+
+# Or create via pgAdmin GUI: Right-click 'Databases' -> Create -> Database -> name it pythonProject5
+
+---
+5) Environment variables (.env)
+-------------------------------
+It's safer to store DB credentials in a `.env` file and read them with python-dotenv.
+Create a file `.env` at project root:
+
+DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/pythonProject5
+# Example for SQLite alternative:
+# DATABASE_URL=sqlite:///./test.db
+
+How to use in `database.py`:
+from dotenv import load_dotenv
+import os
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+---
+6) database.py example (synchronous SQLAlchemy)
+------------------------------------------------
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
+
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {})
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+---
+7) Pydantic v2 note (important)
+-------------------------------
+Pydantic v2 changed `orm_mode = True` to `model_config = {"from_attributes": True}`.
+Example response schema:
+
+from pydantic import BaseModel
+
+class ResponseUser(BaseModel):
+    id: int
+    name: str
+    email: str
+
+    model_config = {"from_attributes": True}
+
+If you keep using `orm_mode = True`, you'll get a warning. Update for Pydantic v2.
+
+---
+8) Running the app
+------------------
+Start the app with uvicorn (from project root):
+
+uvicorn main:app --reload
+
+Open Swagger UI:
+http://127.0.0.1:8000/docs
+
+If you see DB connection errors on startup (tracebacks referencing Base.metadata.create_all), check:
+- DATABASE_URL and port (5432)
+- DB service running
+- DB exists and user credentials are correct
+
+---
+9) Common troubleshooting & fixes
+--------------------------------
+- OperationalError: connection refused (port 8000)
+  Cause: You used port 8000 in DATABASE_URL. Fix: change to 5432 (or your PG port).
+
+- FATAL: database "xyz" does not exist
+  Fix: create the DB with createdb/psql or change DATABASE_URL to an existing DB (e.g., postgres).
+
+- FastAPIError: Invalid args for response field (Session)
+  Cause: In route signature you used `db: Session = sessionLocal()` instead of `db: Session = Depends(get_db)`.
+  Fix: Use dependency injection:
+      from fastapi import Depends
+      def create_user(user: UserCreate, db: Session = Depends(get_db)):
+          ...
+
+- Pydantic v2 warning about `orm_mode`
+  Fix: replace Config class with `model_config = {"from_attributes": True}`.
+
+---
+10) Creating requirements.txt from virtualenv
+--------------------------------------------
+# After installing everything:
+pip freeze > requirements.txt
+Share this file with the repo so others can `pip install -r requirements.txt`.
+
+---
+11) How to share project folder for others to use
+-------------------------------------------------
+Include the following in the folder:
+- All Python files (main.py, crud.py, models.py, schemas.py, database.py)
+- requirements.txt (frozen if possible)
+- README_SETUP.txt (this file)
+- .env.example (do NOT include secrets; provide example values)
+- Optional: SQL scripts (e.g., initial_data.sql) to populate DB with sample data
+
+Steps for recipient:
+1. clone/copy folder
+2. create venv and activate
+3. pip install -r requirements.txt
+4. create or configure DB (create DB in Postgres)
+5. set DATABASE_URL in .env (or edit database.py)
+6. run uvicorn main:app --reload
+7. check http://127.0.0.1:8000/docs
+
+---
+12) Example .env.example
+------------------------
+# copy to .env and fill in real values
+DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/pythonProject5
+SECRET_KEY=your-secret
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+---
+13) Optional improvements & suggestions
+--------------------------------------
+- Add Alembic for database migrations instead of create_all()
+- Add password hashing (bcrypt, passlib) and JWT auth for protection
+- Add tests (pytest) and CI workflow (Github Actions)
+- Add Dockerfile and docker-compose to make local setup reproducible
+- Add route tests and integration tests for endpoints
+
+---
+14) Quick checklist (copy-paste for recipients)
+-----------------------------------------------
+1. python -m venv .venv
+2. .\.venv\Scripts\Activate.ps1
+3. pip install -r requirements.txt
+4. Create DB: createdb pythonProject5  (or via pgAdmin)
+5. Copy .env.example -> .env and update DATABASE_URL
+6. uvicorn main:app --reload
+7. Open http://127.0.0.1:8000/docs
+
+---
+15) Troubleshooting contact & logs
+---------------------------------
+If you still face issues, gather the following and share with the project maintainer:
+- output of `uvicorn main:app --reload`
+- contents of `database.py`
+- exact DATABASE_URL used
+- result of `netstat -ano | findstr 5432` (on Windows) to verify PostgreSQL port listening
+- full stack trace printed in terminal
+
+---
+Thank you! This README_SETUP.txt is intended to be shared alongside the codebase so a new developer can get the project up and running quickly.
